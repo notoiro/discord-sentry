@@ -19,9 +19,6 @@ client.on('presenceUpdate', (_, newPresence) => {
     const channel = client.channels.cache.get(CHANNEL_ID);
     if(newPresence.status === "offline"){
       if (channel) channel.send(`⚠️ <@&${MENTION}> <@${newPresence.userId}> がオフラインになりました！`);
-    }else if(newPresence.status === "online"){
-      if (channel) channel.send(`✅️ <@&${MENTION}> <@${newPresence.userId}> がオンラインになりました！`);
-
     }
 
 
