@@ -19,6 +19,8 @@
 2.  **設定**
     `config.json` を作成し、あなたの環境に合わせて編集します。
 
+    Discordでトークンを発行するときにPresence Intentを有効にしてください。
+
     ```json
     {
       "TOKEN": "YOUR_DISCORD_BOT_TOKEN",
@@ -28,10 +30,12 @@
     }
     ```
 
-3.  **起動**
+4.  **起動**
     ```bash
     npm start
     ```
+
+    Botはパーミッション`150528`で招待してください
 
 ## ライセンス
 
