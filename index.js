@@ -1,10 +1,33 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, ApplicationCommandOptionType } = require('discord.js');
+
 const {
   TOKEN, SERVER_ID, CHANNEL_ID, MENTION, TARGET_IDS
 } = require('./config.json');
 
 // オフライン情報をユーザーごとに保存しておく
 const offlineData = new Map();
+let mute_data = null;
+
+const commands = [
+  {
+    name: "mute",
+    description: "指定された時間、状態をメンションしません",
+    options: [
+      {
+        type: ApplicationCommandOptionType.Integer,
+        name: "time",
+        description: "時間（分）",
+        required: true
+      },
+      {
+        type: ApplicationCommandOptionType.String,
+        name: "reason",
+        description: "理由",
+        required: true
+      }
+    ]    
+  }
+]
 
 const client = new Client({
   intents: [
@@ -41,7 +64,49 @@ function formatDuration(milliseconds) {
   return parts.join('');
 }
 
-client.once('ready', () => {
+client.once('clientReady', async () => {
+  await client.application.commands.set(commands);
+
+  client.on('interactionCreate', async (interaction) => {
+    if(!(interaction.isChatInputCommand())) return;
+    if(!(interaction.inGuild())) return;
+    
+    if(interaction.guildId !== SERVER_ID) return;
+
+    try{
+      switch(interaction.commandName){
+        case "mute":
+          if(mute_data) {
+            await interaction.reply('すでにミュートが設定されています！');
+            return;
+          }
+
+          const time = interaction.options.get('time').value;
+
+          const now = new Date();
+          let exp_time = new Date();
+          exp_time.setMinutes(exp_time.getMinutes() + time);
+
+          mute_data = {
+            exp: exp_time,
+            reason: interaction.options.get('reason').value
+          };
+
+          setTimeout(() => {
+            mute_data = null;
+          }, time *60 *1000);
+
+          await interaction.reply(`ミュート設定を行いました。\n  Reason: ${mute_data.reason}\n  Exp: ${formatDate(mute_data.exp)}`);
+
+          break;
+        default:
+          break;
+      }
+    }catch(e){
+      console.error(e);
+    }
+  })
+
   console.log("Bot is online!");
 });
 
@@ -53,6 +118,11 @@ client.on('presenceUpdate', (_, newPresence) => {
 
   if(newPresence.status === "offline"){
     let mentionString = newPresence.guild?.roles.cache.has(MENTION) ? `<@&${MENTION}>` : `<@${MENTION}>`;
+
+    if(mute_data){
+      mentionString = `💤 [ミュート済み（Reason: ${mute_data.reason}, Exp: ${formatDate(mute_data.exp)}）]\n`
+    }
+
     const startTime = new Date();
 
     channel.send(`⚠️ ${mentionString} <@${newPresence.userId}> がオフラインになりました！`)
