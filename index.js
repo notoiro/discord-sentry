@@ -1,8 +1,37 @@
-const { Client, GatewayIntentBits, ApplicationCommandOptionType } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
+const { Client, GatewayIntentBits, ApplicationCommandOptionType, PermissionFlagsBits } = require('discord.js');
 
 const {
   TOKEN, SERVER_ID, CHANNEL_ID, MENTION, TARGET_IDS
 } = require('./config.json');
+
+// 監視対象IDを永続化するファイル
+const TARGETS_FILE = path.join(__dirname, 'targets.json');
+
+// 監視対象一覧を読み込む（無ければconfig.jsonの値を初期値として使う）
+function loadTargetIds() {
+  try {
+    if (fs.existsSync(TARGETS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(TARGETS_FILE, 'utf8'));
+      if (Array.isArray(data)) return data;
+    }
+  } catch (e) {
+    console.error('targets.jsonの読み込みに失敗しました:', e);
+  }
+  return Array.isArray(TARGET_IDS) ? [...TARGET_IDS] : [];
+}
+
+function saveTargetIds() {
+  try {
+    fs.writeFileSync(TARGETS_FILE, JSON.stringify(targetIds, null, 2));
+  } catch (e) {
+    console.error('targets.jsonの書き込みに失敗しました:', e);
+  }
+}
+
+// 監視対象ユーザーIDの一覧（実行時に増減する）
+let targetIds = loadTargetIds();
 
 // オフライン情報をユーザーごとに保存しておく
 const offlineData = new Map();
@@ -26,6 +55,44 @@ const commands = [
         required: true
       }
     ]    
+  },
+  {
+    name: "target",
+    description: "監視対象ユーザーを管理します",
+    defaultMemberPermissions: PermissionFlagsBits.Administrator,
+    options: [
+      {
+        type: ApplicationCommandOptionType.Subcommand,
+        name: "add",
+        description: "監視対象にユーザーを追加します",
+        options: [
+          {
+            type: ApplicationCommandOptionType.User,
+            name: "user",
+            description: "追加するユーザー",
+            required: true
+          }
+        ]
+      },
+      {
+        type: ApplicationCommandOptionType.Subcommand,
+        name: "remove",
+        description: "監視対象からユーザーを削除します",
+        options: [
+          {
+            type: ApplicationCommandOptionType.User,
+            name: "user",
+            description: "削除するユーザー",
+            required: true
+          }
+        ]
+      },
+      {
+        type: ApplicationCommandOptionType.Subcommand,
+        name: "list",
+        description: "現在の監視対象一覧を表示します"
+      }
+    ]
   }
 ]
 
@@ -99,6 +166,44 @@ client.once('clientReady', async () => {
           await interaction.reply(`ミュート設定を行いました。\n  Reason: ${mute_data.reason}\n  Exp: ${formatDate(mute_data.exp)}`);
 
           break;
+        case "target":
+          const subCommand = interaction.options.getSubcommand();
+
+          if(subCommand === "add"){
+            const user = interaction.options.getUser('user');
+
+            if(targetIds.includes(user.id)){
+              await interaction.reply(`<@${user.id}> はすでに監視対象です。`);
+              return;
+            }
+
+            targetIds.push(user.id);
+            saveTargetIds();
+
+            await interaction.reply(`<@${user.id}> を監視対象に追加しました。`);
+          }else if(subCommand === "remove"){
+            const user = interaction.options.getUser('user');
+
+            if(!targetIds.includes(user.id)){
+              await interaction.reply(`<@${user.id}> は監視対象ではありません。`);
+              return;
+            }
+
+            targetIds = targetIds.filter(id => id !== user.id);
+            saveTargetIds();
+
+            await interaction.reply(`<@${user.id}> を監視対象から削除しました。`);
+          }else if(subCommand === "list"){
+            if(targetIds.length === 0){
+              await interaction.reply('現在、監視対象は設定されていません。');
+              return;
+            }
+
+            const list = targetIds.map(id => `<@${id}>`).join('\n');
+            await interaction.reply(`現在の監視対象一覧:\n${list}`);
+          }
+
+          break;
         default:
           break;
       }
@@ -111,7 +216,7 @@ client.once('clientReady', async () => {
 });
 
 client.on('presenceUpdate', (_, newPresence) => {
-  if(!TARGET_IDS.some(id => newPresence.userId === id)) return;
+  if(!targetIds.some(id => newPresence.userId === id)) return;
 
   const channel = client.channels.cache.get(CHANNEL_ID);
   if(!channel) return; // チャンネルが無い場合なにもできない
